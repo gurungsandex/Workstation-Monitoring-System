@@ -31,7 +31,7 @@ export async function agentWsRoutes(app: FastifyInstance) {
       const workstationId = agentPayload.sub;
       app.log.info({ workstationId }, "Agent connected");
 
-      connection.socket.on("message", async (raw) => {
+      connection.socket.on("message", async (raw: Buffer) => {
         try {
           const payload = JSON.parse(raw.toString()) as MetricPayload;
           payload.workstation_id = workstationId; // enforce from token, not message

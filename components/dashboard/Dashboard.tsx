@@ -1,28 +1,42 @@
 "use client";
 import Link from "next/link";
-import { fleet, workstations, events, relTime } from "@/lib/data";
 import { useLive } from "@/lib/LiveContext";
 import { GaugeCard } from "./GaugeCard";
 import { Donut } from "@/components/charts/Donut";
 import { LineChart } from "@/components/charts/LineChart";
 import { ProgressBar } from "@/components/charts/ProgressBar";
 import { AnimatedNumber } from "@/components/charts/AnimatedNumber";
-import { loadColor } from "@/components/charts/utils";
-import type { Status } from "@/lib/data";
+import type { EnrolledWorkstation } from "@/lib/api";
+import type { HistPoint } from "@/lib/useFleetData";
 
-function avgSpark(key: "cpu" | "ram" | "net"): number[] {
-  const len = workstations[0].spark[key].length;
-  return Array.from({ length: len }, (_, i) => {
-    const on = workstations.filter((w) => w.status !== "offline");
-    return on.reduce((s, w) => s + w.spark[key][i], 0) / on.length;
-  });
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+const STATUS_ORDER = ["healthy", "warning", "critical", "offline"] as const;
+type Status = typeof STATUS_ORDER[number];
+
+function relTime(iso?: string | null): string {
+  if (!iso) return "—";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60_000) return `${Math.floor(ms / 1000)}s ago`;
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
+  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`;
+  return `${Math.floor(ms / 86_400_000)}d ago`;
 }
 
-function histAvg(key: "cpu" | "ram" | "netIn" | "netOut"): number[] {
-  return Array.from({ length: 48 }, (_, i) => {
-    const on = workstations.filter((w) => w.status !== "offline");
-    return on.reduce((s, w) => s + w.hist[key][i], 0) / on.length;
-  });
+function histSeries(history: HistPoint[], key: keyof HistPoint): number[] {
+  if (!history.length) return Array(48).fill(0);
+  // Downsample or pad to 48 points
+  const data = history.map((p) => Number(p[key]) || 0);
+  if (data.length >= 48) return data.slice(-48);
+  return [...Array(48 - data.length).fill(0), ...data];
+}
+
+function makeSpark(rows: EnrolledWorkstation[], key: keyof EnrolledWorkstation, len = 20): number[] {
+  const online = rows.filter((r) => r.status !== "offline");
+  if (!online.length) return Array(len).fill(0);
+  const val = online.reduce((s, r) => s + ((r[key] as number) ?? 0), 0) / online.length;
+  // Single-value spark (real sparklines come from 30m history in next milestone)
+  return Array(len).fill(0).map((_, i) => val * (0.85 + Math.sin(i * 0.6) * 0.1));
 }
 
 const CHART_LABELS = [
@@ -30,39 +44,70 @@ const CHART_LABELS = [
   { at: 24, t: "12h" }, { at: 36, t: "6h" }, { at: 47, t: "now" },
 ];
 
-export function Dashboard() {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { tickCount } = useLive();
-  const f = fleet();
-  const cpuSpark = avgSpark("cpu");
-  const ramSpark = avgSpark("ram");
-  const netSpark = avgSpark("net");
-  const healthyPct = Math.round((f.counts.healthy / f.total) * 100);
+// ── component ─────────────────────────────────────────────────────────────────
 
-  const needsAttention = workstations
+export function Dashboard() {
+  const { fleetData } = useLive();
+  const { fleet, rows, history, loading } = fleetData;
+
+  const f = fleet ?? {
+    counts: { healthy: 0, warning: 0, critical: 0, offline: 0 },
+    total: 0, avgCpu: 0, avgRam: 0, avgDisk: 0, avgGpu: 0, netIn: 0, netOut: 0,
+  };
+
+  const healthyPct = f.total > 0 ? Math.round((f.counts.healthy / f.total) * 100) : 0;
+
+  const needsAttention = [...rows]
     .filter((w) => w.status !== "healthy")
-    .sort((a, b) => a.health.score - b.health.score)
+    .sort((a, b) => a.health_score - b.health_score)
     .slice(0, 7);
 
-  const topCpu  = [...workstations].filter((w) => w.status !== "offline").sort((a, b) => b.cpu.usage - a.cpu.usage).slice(0, 5);
-  const topRam  = [...workstations].filter((w) => w.status !== "offline").sort((a, b) => b.ram.usedPct - a.ram.usedPct).slice(0, 5);
-  const topDisk = [...workstations].filter((w) => w.status !== "offline").sort((a, b) => b.disk.usedPct - a.disk.usedPct).slice(0, 5);
+  const online = rows.filter((w) => w.status !== "offline");
+  const topCpu  = [...online].sort((a, b) => (b.snap_cpu_usage    ?? 0) - (a.snap_cpu_usage    ?? 0)).slice(0, 5);
+  const topRam  = [...online].sort((a, b) => (b.snap_ram_used_pct ?? 0) - (a.snap_ram_used_pct ?? 0)).slice(0, 5);
+  const topDisk = [...online].sort((a, b) => (b.snap_disk_used_pct?? 0) - (a.snap_disk_used_pct?? 0)).slice(0, 5);
+
+  const cpuSpark  = makeSpark(rows, "snap_cpu_usage");
+  const ramSpark  = makeSpark(rows, "snap_ram_used_pct");
+  const diskSpark = makeSpark(rows, "snap_disk_used_pct");
+  const gpuSpark  = makeSpark(rows, "snap_gpu_load");
+  const netInSpark  = makeSpark(rows, "snap_net_eth_in");
+  const netOutSpark = makeSpark(rows, "snap_net_eth_out");
+
+  const cpuHist  = histSeries(history, "avg_cpu");
+  const ramHist  = histSeries(history, "avg_ram");
+
+  if (loading && !fleet) {
+    return (
+      <div style={{ padding: 60, textAlign: "center", color: "var(--text-dim)" }}>
+        <div style={{ fontSize: 13 }}>Loading fleet data…</div>
+      </div>
+    );
+  }
+
+  if (!loading && rows.length === 0) {
+    return (
+      <div style={{ padding: 60, textAlign: "center", color: "var(--text-dim)" }}>
+        <div style={{ fontSize: 32, marginBottom: 12 }}>📡</div>
+        <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>No workstations enrolled yet</div>
+        <div style={{ fontSize: 13, marginBottom: 20 }}>Go to <Link href="/network" style={{ color: "var(--info)" }}>Network</Link> to discover hosts and enroll agents.</div>
+      </div>
+    );
+  }
 
   return (
     <div className="view-enter" style={{ padding: 24, display: "flex", flexDirection: "column", gap: "var(--gap-grid)" }}>
 
       {/* Row 1 — 6 gauge cards */}
       <div className="grid" style={{ gridTemplateColumns: "repeat(6, 1fr)" }}>
-        <GaugeCard label="Avg CPU"      icon="cpu"       value={f.avgCpu}  unit="%" spark={cpuSpark} />
-        <GaugeCard label="Avg RAM"      icon="memory"    value={f.avgRam}  unit="%" spark={ramSpark} />
-        <GaugeCard label="Avg Disk I/O" icon="disk"      value={f.avgDisk} unit="MB/s" max={400}
-          color="var(--info)" spark={cpuSpark.map(v => v * 3)} decimals={0} />
-        <GaugeCard label="Avg GPU"      icon="gpu"       value={f.avgGpu}  unit="%" spark={ramSpark.map(v => v * 0.9)}
-          color="var(--gpu)" />
-        <GaugeCard label="Net Inbound"  icon="arrowDown" value={f.netIn}   unit="Mb/s" max={600}
-          color="var(--network)" spark={netSpark} decimals={0} />
-        <GaugeCard label="Net Outbound" icon="arrowUp"   value={f.netOut}  unit="Mb/s" max={400}
-          color="var(--network)" spark={netSpark.map(v => v * 0.6)} decimals={0} />
+        <GaugeCard label="Avg CPU"      icon="cpu"       value={f.avgCpu}       unit="%" spark={cpuSpark} />
+        <GaugeCard label="Avg RAM"      icon="memory"    value={f.avgRam}       unit="%" spark={ramSpark} />
+        <GaugeCard label="Avg Disk"     icon="disk"      value={f.avgDisk}      unit="%" spark={diskSpark} />
+        <GaugeCard label="Avg GPU"      icon="gpu"       value={f.avgGpu}       unit="%" spark={gpuSpark} color="var(--gpu)" />
+        <GaugeCard label="Net Inbound"  icon="arrowDown" value={f.netIn}        unit="MB/s" max={600}
+          color="var(--network)" spark={netInSpark} decimals={1} />
+        <GaugeCard label="Net Outbound" icon="arrowUp"   value={f.netOut}       unit="MB/s" max={400}
+          color="var(--network)" spark={netOutSpark} decimals={1} />
       </div>
 
       {/* Row 2 — trend chart + donut */}
@@ -71,18 +116,17 @@ export function Dashboard() {
           <div className="card-head">
             <div className="card-title">Fleet load · last 24 hours</div>
             <div style={{ display: "flex", gap: 14 }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-dim)" }}>
-                <span style={{ width: 9, height: 9, borderRadius: 2, background: "var(--info)" }} />CPU
-              </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-dim)" }}>
-                <span style={{ width: 9, height: 9, borderRadius: 2, background: "var(--gpu)" }} />RAM
-              </span>
+              {[["CPU", "var(--info)"], ["RAM", "var(--gpu)"]].map(([label, color]) => (
+                <span key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-dim)" }}>
+                  <span style={{ width: 9, height: 9, borderRadius: 2, background: color }} />{label}
+                </span>
+              ))}
             </div>
           </div>
           <LineChart
             series={[
-              { name: "CPU %", data: histAvg("cpu"), color: "var(--info)" },
-              { name: "RAM %", data: histAvg("ram"), color: "var(--gpu)" },
+              { name: "CPU %", data: cpuHist, color: "var(--info)" },
+              { name: "RAM %", data: ramHist, color: "var(--gpu)" },
             ]}
             yMax={100}
             labels={CHART_LABELS}
@@ -104,11 +148,11 @@ export function Dashboard() {
               <span className="label" style={{ marginTop: 3 }}>Healthy</span>
             </Donut>
             <div style={{ display: "flex", flexDirection: "column", gap: 9, flex: 1 }}>
-              {(["healthy","warning","critical","offline"] as Status[]).map((k) => (
+              {STATUS_ORDER.map((k) => (
                 <div key={k} style={{ display: "flex", alignItems: "center", gap: 9 }}>
                   <span className={`dot ${k}`} />
                   <span style={{ textTransform: "capitalize", fontSize: 12.5, color: "var(--text-dim)", flex: 1 }}>{k}</span>
-                  <span className="mono" style={{ fontWeight: 600, fontSize: 14 }}>{f.counts[k]}</span>
+                  <span className="mono" style={{ fontWeight: 600, fontSize: 14 }}>{f.counts[k as keyof typeof f.counts]}</span>
                 </div>
               ))}
             </div>
@@ -116,7 +160,7 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Row 3 — attention list + alert feed */}
+      {/* Row 3 — attention list + top activity */}
       <div className="grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
         {/* Workstations needing attention */}
         <div className="card" style={{ display: "flex", flexDirection: "column" }}>
@@ -124,105 +168,128 @@ export function Dashboard() {
             <div className="card-title">Workstations needing attention</div>
             <Link href="/workstations" className="chip">View all</Link>
           </div>
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {needsAttention.map((w, i) => {
-              const f0 = w.health.factors[0];
-              return (
+          {needsAttention.length === 0 ? (
+            <div style={{ padding: "24px 6px", color: "var(--healthy)", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="dot healthy" />All workstations healthy
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {needsAttention.map((w, i) => (
                 <Link key={w.id} href={`/workstations/${w.id}`} style={{
                   display: "flex", alignItems: "center", gap: 12,
                   padding: "10px 6px", borderTop: i ? "1px solid var(--hairline)" : "none",
-                  borderRadius: 6, textDecoration: "none",
-                  transition: "background .12s",
+                  borderRadius: 6, textDecoration: "none", transition: "background .12s",
                 }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,.025)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-                  <span className={`dot ${w.status}`} />
+                  <span className={`dot ${w.status as Status}`} />
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div className="mono" style={{ fontSize: 13, color: "var(--text)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.hostname}</div>
-                    <div style={{ fontSize: 11.5, color: "var(--text-faint)" }}>{f0 ? f0.label : w.status} · {w.dept}</div>
+                    <div className="mono" style={{ fontSize: 13, color: "var(--text)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {w.hostname}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-faint)" }}>{w.dept ?? w.os_family ?? w.status}</div>
                   </div>
                   <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <div className="mono" style={{ fontSize: 15, fontWeight: 600, color: `var(--${w.status})` }}>{w.health.score}</div>
+                    <div className="mono" style={{ fontSize: 15, fontWeight: 600, color: `var(--${w.status})` }}>
+                      {w.health_score}
+                    </div>
                     <div className="mono" style={{ fontSize: 10, color: "var(--text-faint)" }}>
-                      {w.status === "offline" ? relTime(w.lastSeenMin) : relTime(w.timeInStateMin)}
+                      {relTime(w.last_seen_at)}
                     </div>
                   </div>
                 </Link>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Live alert feed */}
+        {/* Recent workstation activity */}
         <div className="card" style={{ display: "flex", flexDirection: "column" }}>
           <div className="card-head">
-            <div className="card-title">Live alert feed</div>
+            <div className="card-title">Recent activity</div>
             <Link href="/alerts" className="chip">Alerts center</Link>
           </div>
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {events.slice(0, 10).map((ev, i) => (
-              <Link key={ev.id} href={`/workstations/${ev.wsId}`} style={{
-                display: "flex", alignItems: "flex-start", gap: 11,
-                padding: "9px 6px", borderTop: i ? "1px solid var(--hairline)" : "none",
-                borderRadius: 6, textDecoration: "none",
-                transition: "background .12s",
-              }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,.025)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-                <span className={`dot ${ev.sev}`} style={{ marginTop: 5 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12.5, color: "var(--text)" }}>{ev.text}</div>
-                  <div className="mono" style={{ fontSize: 10.5, color: "var(--text-faint)" }}>{ev.ws}</div>
-                </div>
-                <span className="mono" style={{ fontSize: 10.5, color: "var(--text-faint)", flexShrink: 0, whiteSpace: "nowrap" }}>
-                  {relTime(ev.ageMin)}
-                </span>
-              </Link>
-            ))}
-          </div>
+          {rows.length === 0 ? (
+            <div style={{ padding: "24px 6px", color: "var(--text-dim)", fontSize: 13 }}>No activity yet.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {[...rows]
+                .filter((w) => w.last_seen_at)
+                .sort((a, b) => new Date(b.last_seen_at!).getTime() - new Date(a.last_seen_at!).getTime())
+                .slice(0, 10)
+                .map((w, i) => (
+                  <Link key={w.id} href={`/workstations/${w.id}`} style={{
+                    display: "flex", alignItems: "flex-start", gap: 11,
+                    padding: "9px 6px", borderTop: i ? "1px solid var(--hairline)" : "none",
+                    borderRadius: 6, textDecoration: "none", transition: "background .12s",
+                  }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,.025)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                    <span className={`dot ${w.status as Status}`} style={{ marginTop: 5 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, color: "var(--text)" }}>{w.hostname}</div>
+                      <div className="mono" style={{ fontSize: 10.5, color: "var(--text-faint)" }}>
+                        CPU {(w.snap_cpu_usage ?? 0).toFixed(0)}% · RAM {(w.snap_ram_used_pct ?? 0).toFixed(0)}%
+                      </div>
+                    </div>
+                    <span className="mono" style={{ fontSize: 10.5, color: "var(--text-faint)", flexShrink: 0, whiteSpace: "nowrap" }}>
+                      {relTime(w.last_seen_at)}
+                    </span>
+                  </Link>
+                ))}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Row 4 — top N */}
       <div className="grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
-        <TopNCard title="Top by CPU" metric="Load %" unit="%" items={topCpu} getValue={(w) => w.cpu.usage} />
-        <TopNCard title="Top by RAM" metric="Used %" unit="%" items={topRam} getValue={(w) => w.ram.usedPct} />
-        <TopNCard title="Top by Disk" metric="Used %" unit="%" items={topDisk} getValue={(w) => w.disk.usedPct} />
+        <TopNCard title="Top by CPU"  unit="%" items={topCpu}  getValue={(w) => w.snap_cpu_usage    ?? 0} />
+        <TopNCard title="Top by RAM"  unit="%" items={topRam}  getValue={(w) => w.snap_ram_used_pct ?? 0} />
+        <TopNCard title="Top by Disk" unit="%" items={topDisk} getValue={(w) => w.snap_disk_used_pct?? 0} />
       </div>
     </div>
   );
 }
 
+// ── TopNCard ──────────────────────────────────────────────────────────────────
+
 function TopNCard({
-  title, metric, unit, items, getValue,
+  title, unit, items, getValue,
 }: {
-  title: string; metric: string; unit: string;
-  items: typeof workstations;
-  getValue: (w: typeof workstations[0]) => number;
+  title: string; unit: string;
+  items: EnrolledWorkstation[];
+  getValue: (w: EnrolledWorkstation) => number;
 }) {
   const maxV = Math.max(...items.map(getValue), 1);
   return (
     <div className="card">
       <div className="card-head">
         <div className="card-title">{title}</div>
-        <span className="label">{metric}</span>
+        <span className="label">Used {unit}</span>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-        {items.map((w) => {
-          const v = getValue(w);
-          return (
-            <Link key={w.id} href={`/workstations/${w.id}`} style={{ textDecoration: "none", cursor: "pointer" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, gap: 8 }}>
-                <span className="mono" style={{ fontSize: 12, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.hostname}</span>
-                <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", flexShrink: 0 }}>
-                  {v.toFixed(unit === "%" ? 0 : 1)}{unit}
-                </span>
-              </div>
-              <ProgressBar value={v} max={unit === "%" ? 100 : maxV} />
-            </Link>
-          );
-        })}
-      </div>
+      {items.length === 0 ? (
+        <div style={{ color: "var(--text-faint)", fontSize: 13, padding: "12px 0" }}>No data</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+          {items.map((w) => {
+            const v = getValue(w);
+            return (
+              <Link key={w.id} href={`/workstations/${w.id}`} style={{ textDecoration: "none", cursor: "pointer" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, gap: 8 }}>
+                  <span className="mono" style={{ fontSize: 12, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {w.hostname}
+                  </span>
+                  <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", flexShrink: 0 }}>
+                    {v.toFixed(0)}{unit}
+                  </span>
+                </div>
+                <ProgressBar value={v} max={unit === "%" ? 100 : maxV} />
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

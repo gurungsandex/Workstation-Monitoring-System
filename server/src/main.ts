@@ -5,12 +5,11 @@ import fastifyCors from "@fastify/cors";
 import fastifyWebsocket from "@fastify/websocket";
 import fastifyRateLimit from "@fastify/rate-limit";
 import { config } from "./config";
-import { pool } from "./db";
 import { authRoutes } from "./routes/auth";
 import { enrollmentRoutes } from "./routes/enrollment";
 import { metricsRoutes } from "./routes/metrics";
-import { workstationsRoutes } from "./routes/workstations";
-import { alertsRoutes } from "./routes/alerts";
+import { workstationRoutes } from "./routes/workstations";
+import { alertRoutes } from "./routes/alerts";
 import { discoveryRoutes } from "./routes/discovery";
 import { agentWsRoutes } from "./ws/agentHandler";
 import { browserWsRoutes } from "./ws/browserHandler";
@@ -22,7 +21,7 @@ const app = Fastify({ logger: { level: "info" } });
 async function main() {
   // Plugins
   await app.register(fastifyCors, {
-    origin: config.corsOrigin,
+    origin: config.cors.origin,
     credentials: true,
   });
 
@@ -31,22 +30,22 @@ async function main() {
     timeWindow: "1 minute",
   });
 
-  await app.register(fastifyJwt, {
-    secret: config.jwtSecret,
-    cookie: { cookieName: "token", signed: false },
-  });
-
   await app.register(fastifyCookie);
+
+  await app.register(fastifyJwt, {
+    secret: config.jwt.secret,
+    cookie: { cookieName: "wms_token", signed: false },
+  });
 
   await app.register(fastifyWebsocket);
 
-  // Routes
-  await app.register(authRoutes,        { prefix: "/api/auth" });
-  await app.register(enrollmentRoutes,  { prefix: "/api/enroll" });
-  await app.register(metricsRoutes,     { prefix: "/api/metrics" });
-  await app.register(workstationsRoutes,{ prefix: "/api/workstations" });
-  await app.register(alertsRoutes,      { prefix: "/api/alerts" });
-  await app.register(discoveryRoutes,   { prefix: "/api/discover" });
+  // Routes (each route file declares full /api/... paths)
+  await app.register(authRoutes);
+  await app.register(enrollmentRoutes);
+  await app.register(metricsRoutes);
+  await app.register(workstationRoutes);
+  await app.register(alertRoutes);
+  await app.register(discoveryRoutes);
 
   // WebSocket routes
   await app.register(agentWsRoutes);
@@ -69,7 +68,7 @@ function startHeartbeatWatchdog() {
       const stale = await query<{ id: string }>(
         `SELECT id FROM workstations
          WHERE status != 'offline'
-           AND snap_at < NOW() - INTERVAL '5 minutes'`
+           AND last_seen_at < NOW() - INTERVAL '5 minutes'`
       );
       for (const ws of stale) {
         await raiseHeartbeatAlert(ws.id);
@@ -77,7 +76,7 @@ function startHeartbeatWatchdog() {
     } catch (err) {
       app.log.error({ err }, "Heartbeat watchdog error");
     }
-  }, config.alertIntervalMs);
+  }, config.alerts.intervalMs);
 }
 
 main().catch((err) => {

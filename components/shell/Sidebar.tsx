@@ -2,7 +2,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
-import { fleet } from "@/lib/data";
 import { useLive } from "@/lib/LiveContext";
 
 const NAV = [
@@ -19,10 +18,9 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname   = usePathname();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { tickCount } = useLive();
-  const f          = fleet();
-  const alertCount = 0; // will wire later
+  const { fleetData, alertBadge } = useLive();
+  const f = fleetData.fleet ?? { counts: { healthy: 0, warning: 0, critical: 0, offline: 0 }, total: 0 };
+  const alertCount = alertBadge;
 
   const activeId = pathname === "/" ? "dashboard"
     : pathname.startsWith("/workstations") ? "workstations"
