@@ -6,7 +6,7 @@ export async function browserWsRoutes(app: FastifyInstance) {
   app.get(
     "/ws/live",
     { websocket: true },
-    async (connection, req) => {
+    async (socket, req) => {
       // Verify user JWT from cookie or ?token= query param
       const tokenFromQuery = (req.query as Record<string, string>).token;
       if (tokenFromQuery) {
@@ -15,10 +15,10 @@ export async function browserWsRoutes(app: FastifyInstance) {
       try {
         await req.jwtVerify();
       } catch {
-        connection.socket.close(4001, "Unauthorized");
+        socket.close(4001, "Unauthorized");
         return;
       }
-      registerClient(connection.socket);
+      registerClient(socket);
       app.log.info({ ip: req.ip }, "Browser WS client connected");
     }
   );
