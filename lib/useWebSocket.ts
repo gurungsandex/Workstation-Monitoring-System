@@ -3,7 +3,12 @@ import { useEffect, useRef, useCallback } from "react";
 
 const WS_URL =
   typeof window !== "undefined"
-    ? (process.env.NEXT_PUBLIC_WS_URL ?? `ws://${window.location.hostname}:4000/ws/live`)
+    ? (process.env.NEXT_PUBLIC_WS_URL ?? (() => {
+        // Mirror the page's protocol/host so it works behind Caddy (wss://)
+        // and in plain dev (ws://localhost:PORT). Override via NEXT_PUBLIC_WS_URL.
+        const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+        return `${proto}//${window.location.host}/ws/live`;
+      })())
     : "";
 
 export type WsEvent =

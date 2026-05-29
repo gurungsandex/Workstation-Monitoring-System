@@ -1,0 +1,31 @@
+# ── Dev-only compose: database only ───────────────────────────────────────────
+# Starts just TimescaleDB so you can run server + frontend natively.
+#
+# Usage:
+#   docker-compose -f docker-compose.dev.yml up -d
+#   cd server && npm run migrate && npm run dev    # API on :4000
+#   npm run dev                                    # Next.js on :3000
+
+version: "3.9"
+
+services:
+  db:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wms
+      POSTGRES_USER: wms
+      POSTGRES_PASSWORD: wms
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_dev_data:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wms -d wms"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db_dev_data:

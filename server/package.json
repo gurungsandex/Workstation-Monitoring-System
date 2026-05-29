@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "tsx watch --env-file=.env src/main.ts",
     "build": "tsc",
     "start": "node dist/main.js",
-    "migrate": "node scripts/migrate.js",
+    "migrate": "node --env-file=.env scripts/migrate.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

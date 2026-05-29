@@ -7,7 +7,9 @@ const path = require("path");
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 async function run() {
-  const migrationsDir = path.join(__dirname, "../../db/migrations");
+  // MIGRATIONS_DIR env var lets Docker containers override the default path.
+  // Default works for native dev: server/scripts/ → ../../db/migrations
+  const migrationsDir = process.env.MIGRATIONS_DIR ?? path.join(__dirname, "../../db/migrations");
   const files = fs.readdirSync(migrationsDir)
     .filter((f) => f.endsWith(".sql"))
     .sort();
