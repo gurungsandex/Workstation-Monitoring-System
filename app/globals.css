@@ -1,0 +1,241 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   WorkstationMonSys — production theme tokens
+   ============================================================ */
+:root {
+  /* surfaces */
+  --bg:            #070A0F;
+  --bg-2:          #0A0E15;
+  --card:          #0E1219;
+  --card-2:        #131925;
+  --card-3:        #18202E;
+  --border:        rgba(255,255,255,0.055);
+  --border-strong: rgba(255,255,255,0.10);
+  --hairline:      rgba(255,255,255,0.04);
+
+  /* text */
+  --text:       #E7EBF3;
+  --text-dim:   #939DB2;
+  --text-faint: #5C6577;
+  --text-ghost: #3A4150;
+
+  /* accents — ELECTRIC (default) */
+  --info:     #4C8DFF;
+  --healthy:  #9EE34F;
+  --warning:  #FFB020;
+  --critical: #FF4D7D;
+  --network:  #34D6E6;
+  --gpu:      #B57BFF;
+  --offline:  #4A5160;
+
+  /* radius */
+  --radius:    12px;
+  --radius-sm: 8px;
+
+  /* sidebar widths */
+  --sidebar-w:           232px;
+  --sidebar-w-collapsed: 64px;
+
+  /* metric number size (density-aware) */
+  --metric-size: 36px;
+
+  /* grid gap */
+  --gap-grid: 14px;
+}
+
+/* alternate accent palette — REFINED */
+:root.pal-refined {
+  --info:     #6E9BE8;
+  --healthy:  #84C98C;
+  --warning:  #E0B362;
+  --critical: #E0788F;
+  --network:  #6BC2CC;
+  --gpu:      #A98DDB;
+}
+
+/* compact density */
+:root.density-compact {
+  --radius:      10px;
+  --metric-size: 28px;
+  --gap-grid:    10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body), 'IBM Plex Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ambient backdrop gradients — fixed behind everything */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(1200px 700px at 78% -8%, rgba(76,141,255,0.055), transparent 60%),
+    radial-gradient(900px 600px at 0% 100%, rgba(52,214,230,0.03), transparent 55%);
+}
+
+/* tabular mono metrics */
+.mono {
+  font-family: var(--font-mono), 'IBM Plex Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.display {
+  font-family: var(--font-display), 'Space Grotesk', system-ui, sans-serif;
+}
+
+/* category labels */
+.label {
+  font-size: 10.5px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--text-faint);
+  font-family: var(--font-body), 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+/* card base */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+/* grid */
+.grid {
+  display: grid;
+  gap: var(--gap-grid);
+}
+
+/* chip / small secondary button */
+.chip {
+  font-size: 11px;
+  color: var(--text-faint);
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.14s, color 0.14s;
+}
+.chip:hover {
+  background: var(--card-3);
+  color: var(--text-dim);
+}
+
+/* btn */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.14s, border-color 0.14s;
+  text-decoration: none;
+}
+.btn:hover {
+  background: rgba(255,255,255,0.04);
+  border-color: var(--border-strong);
+}
+
+/* status dots */
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot.healthy  { background: var(--healthy); }
+.dot.warning  { background: var(--warning); }
+.dot.critical {
+  background: var(--critical);
+  animation: statusPulse 1.6s ease-in-out infinite;
+}
+.dot.offline  { background: var(--offline); }
+.dot.info     { background: var(--info); }
+
+@keyframes statusPulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--critical) 45%, transparent); }
+  50%       { box-shadow: 0 0 0 6px color-mix(in oklab, var(--critical) 0%, transparent); }
+}
+
+@keyframes livePulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--healthy) 55%, transparent); }
+  50%       { box-shadow: 0 0 0 5px color-mix(in oklab, var(--healthy) 0%, transparent); }
+}
+
+@keyframes viewIn {
+  from { transform: translateY(8px); }
+  to   { transform: none; }
+}
+
+.view-enter {
+  animation: viewIn 0.34s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* skeleton shimmer */
+.skel {
+  background: linear-gradient(90deg, var(--card-2) 25%, var(--card-3) 50%, var(--card-2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 6px;
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* status badge chip */
+.badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.badge.healthy  { background: color-mix(in oklab, var(--healthy)  15%, transparent); color: var(--healthy); }
+.badge.warning  { background: color-mix(in oklab, var(--warning)  15%, transparent); color: var(--warning); }
+.badge.critical { background: color-mix(in oklab, var(--critical) 15%, transparent); color: var(--critical); }
+.badge.offline  { background: color-mix(in oklab, var(--offline)  15%, transparent); color: var(--offline); }

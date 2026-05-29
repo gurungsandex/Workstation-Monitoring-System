@@ -1,0 +1,22 @@
+{$CADDY_HOST:localhost} {
+  # Reverse proxy API + WebSocket to server
+  handle /api/* {
+    reverse_proxy server:4000
+  }
+  handle /ws/* {
+    reverse_proxy server:4000 {
+      transport http {
+        versions h1
+      }
+    }
+  }
+
+  # Serve Next.js web app
+  handle {
+    reverse_proxy web:3000
+  }
+
+  # TLS — Caddy auto-obtains Let's Encrypt cert when host is a real domain.
+  # For localhost it uses a self-signed cert automatically.
+  tls internal
+}
