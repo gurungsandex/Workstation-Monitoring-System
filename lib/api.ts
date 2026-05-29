@@ -59,6 +59,19 @@ export interface EnrolledWorkstation {
   last_seen_at?: string;
   agent_version?: string;
   is_enrolled: boolean;
+  // latest metric snapshot (populated after first agent ingest)
+  snap_cpu_usage?:     number;
+  snap_cpu_temp?:      number;
+  snap_ram_used_pct?:  number;
+  snap_disk_used_pct?: number;
+  snap_disk_read_mbs?: number;
+  snap_disk_write_mbs?:number;
+  snap_gpu_load?:      number;
+  snap_gpu_temp?:      number;
+  snap_net_eth_in?:    number;
+  snap_net_eth_out?:   number;
+  snap_net_down_mbps?: number;
+  snap_net_up_mbps?:   number;
 }
 
 export interface EnrollTokenResponse {
