@@ -138,6 +138,49 @@ export const workstations = {
   get: (id: string) => req<EnrolledWorkstation>(`/workstations/${id}`),
 };
 
+// ---------- auth / users ----------
+
+export interface UserRow {
+  id: string;
+  email: string;
+  role: "admin" | "viewer";
+  created_at: string;
+  last_login_at: string | null;
+}
+
+export interface AuditRow {
+  id: string;
+  email?: string;
+  action: string;
+  entity_type?: string;
+  entity_id?: string;
+  metadata?: string;
+  ip_addr?: string;
+  created_at: string;
+}
+
+export const auth = {
+  me: () => req<{ id: string; email: string; role: string }>("/auth/me"),
+  login: (email: string, password: string) =>
+    req<{ ok: boolean; role: string; email: string }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  logout: () => req<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+  listUsers: () => req<UserRow[]>("/auth/users"),
+  createUser: (data: { email: string; password: string; role: string }) =>
+    req<UserRow>("/auth/users", { method: "POST", body: JSON.stringify(data) }),
+  deleteUser: (id: string) =>
+    req<{ ok: boolean }>(`/auth/users/${id}`, { method: "DELETE" }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    req<{ ok: boolean }>("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+  auditLog: (page = 1) =>
+    req<{ total: number; rows: AuditRow[] }>(`/audit?page=${page}&limit=50`),
+};
+
 // ---------- alerts ----------
 
 export interface AlertRow {

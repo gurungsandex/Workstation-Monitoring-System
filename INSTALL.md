@@ -43,7 +43,7 @@ docker compose up -d
 ```
 
 The stack starts:
-- **TimescaleDB** on internal port 5432 (migrations run automatically)
+- **TimescaleDB** on internal port 5432 (migrations run automatically on first start)
 - **Server** (Fastify API + WebSocket) on internal port 4000
 - **Web** (Next.js dashboard) on internal port 3000
 - **Caddy** (reverse proxy + automatic TLS) on ports 80/443
@@ -51,22 +51,42 @@ The stack starts:
 Check everything is healthy:
 ```bash
 docker compose ps
+docker compose logs -f server
 ```
 
 ---
 
 ## 3. First admin login
 
+Open `https://<your-domain>` in your browser. You'll be redirected to the login page.
+
 The default admin account is seeded by `db/migrations/003_seed.sql`:
 
 - **Email:** `admin@wms.local`
 - **Password:** `changeme123`
 
-**Change the password immediately** after first login via Settings → Users.
+**Change the password immediately** after first login via **Settings → Change Password**.
 
 ---
 
-## 4. Enroll a workstation agent
+## 4. Create additional users
+
+In the web UI: **Settings → Users → Add user**
+
+- **Admin** — full access: can create/delete users, run network scans, enroll/revoke agents, view audit log
+- **Viewer** — read-only access to all dashboards and alerts
+
+Or via the API:
+```bash
+curl -s -X POST https://<domain>/api/auth/users \
+  -H "Cookie: wms_token=<your-admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"ops@example.com","password":"SecurePass1!","role":"viewer"}'
+```
+
+---
+
+## 5. Enroll a workstation agent
 
 ### Generate an enrollment token
 
@@ -74,27 +94,28 @@ In the web UI: **Network → Discover & Enroll → Generate Token**
 
 Or via the API:
 ```bash
-TOKEN=$(curl -s -X POST https://<domain>/api/enroll/token \
-  -H "Cookie: token=<your-admin-jwt>" \
+curl -s -X POST https://<domain>/api/enroll/token \
+  -H "Cookie: wms_token=<your-admin-jwt>" \
   -H "Content-Type: application/json" \
-  -d '{"label": "my-workstation"}' | jq -r .token)
-echo "Enrollment token: $TOKEN"
+  -d '{"hostname":"my-workstation","dept":"Engineering"}' | jq .
 ```
+
+The response includes ready-to-run install commands for Linux, macOS, and Windows.
 
 ### Install the agent
 
 **Linux (systemd):**
 ```bash
-curl -fsSL https://<domain>/install/linux | \
-  WMS_SERVER_URL=wss://<domain>/ws/agent \
-  WMS_ENROLL_TOKEN=$TOKEN \
-  bash
+# Copy the install command from the UI — it looks like:
+WMS_SERVER=wss://<domain>/ws/agent \
+WMS_TOKEN=<token> \
+bash <(curl -fsSL https://<domain>/install/linux.sh)
 ```
 
 **macOS (launchd):**
 ```bash
-WMS_SERVER_URL=wss://<domain>/ws/agent \
-WMS_ENROLL_TOKEN=$TOKEN \
+WMS_SERVER=wss://<domain>/ws/agent \
+WMS_TOKEN=<token> \
 bash agent/install/macos/install.sh
 ```
 
@@ -107,43 +128,93 @@ bash agent/install/macos/install.sh
 
 The agent will:
 1. Exchange the enrollment token for a permanent per-agent JWT
-2. Persist credentials to `/etc/wms-agent/state.json`
-3. Start sending metrics every 10 seconds
+2. Persist credentials to `/etc/wms-agent/state.json` (Linux/macOS) or `%PROGRAMDATA%\wms-agent\state.json` (Windows)
+3. Register as a system service and start sending metrics every 10 seconds
 
 ---
 
-## 5. Network discovery scan
+## 6. Network discovery scan
 
-In the UI: **Network → Run Scan** — or:
+In the UI: **Network → Run Scan**
+
+Or via the API:
 ```bash
 curl -X POST https://<domain>/api/discover \
-  -H "Cookie: token=<admin-jwt>" \
+  -H "Cookie: wms_token=<admin-jwt>" \
   -H "Content-Type: application/json" \
   -d '{"cidrs": ["192.168.1.0/24"]}'
 ```
 
+Discovered hosts appear under the **Discovered Hosts** tab. Click **Enroll** on any host to generate an install command for it.
+
 ---
 
-## 6. Updating
+## 7. Alert thresholds
+
+Alerts are evaluated automatically by the server every minute (configurable via `ALERT_INTERVAL_MS`).
+
+Default rules:
+
+| Metric | Condition | Severity |
+|---|---|---|
+| CPU Load | > 95% sustained 5 min | Critical |
+| RAM Usage | > 90% sustained 10 min | Critical |
+| Disk Capacity | > 85% | Warning |
+| CPU Temperature | > 85 °C | Critical |
+| GPU Temperature | > 80 °C | Warning |
+| Internet Downlink | < 30 Mbps | Warning |
+| Agent Heartbeat | No signal > 5 min | Critical |
+
+Active alerts are shown on the **Alerts Center** page. Acknowledge alerts in bulk. Alerts auto-resolve when the condition clears.
+
+---
+
+## 8. Updating
 
 ```bash
 git pull
-docker compose build
+docker compose build --no-cache
 docker compose up -d
 ```
 
-Migrations run automatically on server startup.
+Migrations run automatically on server startup — new migrations are applied, existing ones are skipped.
 
 ---
 
-## 7. Revoking an agent
+## 9. Revoking an agent
 
 In the UI: **Network → Enrolled → Revoke**
 
-Or via the API:
-```bash
-curl -X DELETE https://<domain>/api/enroll/<workstation-id> \
-  -H "Cookie: token=<admin-jwt>"
-```
+This marks the workstation offline and invalidates its agent JWT. The agent will stop reporting immediately on next reconnect.
 
-This marks the workstation offline and invalidates its agent token.
+---
+
+## 10. Security notes
+
+- All cookies are `HttpOnly`, `SameSite=Strict`, and `Secure` in production
+- Agent JWTs are separate from user JWTs (different `AGENT_JWT_SECRET`)
+- Caddy automatically provisions a Let's Encrypt TLS certificate for real domains; uses a self-signed cert for `localhost`
+- All admin actions (login, user creation/deletion, ack, token generation) are written to the audit log — visible at **Settings → Audit Log**
+- The database is not exposed outside the Docker network
+
+---
+
+## 11. Troubleshooting
+
+```bash
+# Check all service health
+docker compose ps
+
+# Server logs (includes alert engine + WS events)
+docker compose logs -f server
+
+# Migration errors
+docker compose logs server | grep -i migrat
+
+# Caddy TLS errors
+docker compose logs caddy
+
+# Reset everything (WARNING: deletes all data)
+docker compose down -v
+docker compose up -d
+```

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Space_Grotesk, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { LiveProvider } from "@/lib/LiveContext";
+import { AuthProvider } from "@/lib/AuthContext";
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
@@ -33,9 +34,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${spaceGrotesk.variable} ${ibmPlexSans.variable} ${ibmPlexMono.variable}`}>
       <body>
-        <LiveProvider>
-          {children}
-        </LiveProvider>
+        <AuthProvider>
+          <LiveProvider>
+            {children}
+          </LiveProvider>
+        </AuthProvider>
       </body>
     </html>
   );
