@@ -1,0 +1,79 @@
+/* ============================================================
+   WorkstationMonSys — production theme tokens
+   Drop into your global stylesheet (e.g. app/globals.css).
+   These are the EXACT tokens from the prototype — porting them
+   verbatim keeps the design pixel-identical.
+   Pair with tailwind.config.snippet.js to use as Tailwind colors.
+   ============================================================ */
+:root {
+  /* surfaces */
+  --bg:            #070A0F;
+  --bg-2:          #0A0E15;
+  --card:          #0E1219;
+  --card-2:        #131925;
+  --card-3:        #18202E;
+  --border:        rgba(255,255,255,0.055);
+  --border-strong: rgba(255,255,255,0.10);
+  --hairline:      rgba(255,255,255,0.04);
+
+  /* text */
+  --text:       #E7EBF3;
+  --text-dim:   #939DB2;
+  --text-faint: #5C6577;
+  --text-ghost: #3A4150;
+
+  /* accents — ELECTRIC (default) */
+  --info:     #4C8DFF;
+  --healthy:  #9EE34F;
+  --warning:  #FFB020;
+  --critical: #FF4D7D;
+  --network:  #34D6E6;
+  --gpu:      #B57BFF;
+  --offline:  #4A5160;
+
+  /* fonts */
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-body:    'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono:    'IBM Plex Mono', ui-monospace, monospace;
+
+  /* radius */
+  --radius:    12px;
+  --radius-sm: 8px;
+}
+
+/* alternate accent palette — REFINED. Toggle by adding
+   class="pal-refined" to <html> (or your theme provider). */
+:root.pal-refined {
+  --info:     #6E9BE8;
+  --healthy:  #84C98C;
+  --warning:  #E0B362;
+  --critical: #E0788F;
+  --network:  #6BC2CC;
+  --gpu:      #A98DDB;
+}
+
+/* compact density — add class="density-compact" to <html> */
+:root.density-compact {
+  --radius: 10px;
+}
+
+/* base — match the prototype's body + ambient backdrop */
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+body::before {
+  content: "";
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(1200px 700px at 78% -8%, rgba(76,141,255,0.055), transparent 60%),
+    radial-gradient(900px 600px at 0% 100%, rgba(52,214,230,0.03), transparent 55%);
+}
+
+/* all numerals are tabular mono — apply .mono to metric text */
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+/* load-color helper as utility classes (>=90 crit, >=75 warn, >=55 info, else healthy)
+   — implement the threshold logic in JS; these are the target colors. */
