@@ -182,7 +182,7 @@ export default function NetworkPage() {
           {tab === "enrolled" && (
             <div className="card" style={{ overflow: "auto" }}>
               {enrolled.length === 0
-                ? <Empty>No workstations enrolled yet — click "Enroll Workstation" to get started.</Empty>
+                ? <Empty>No workstations enrolled yet — click &quot;Enroll Workstation&quot; to get started.</Empty>
                 : (
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                     <thead><tr style={{ borderBottom: "1px solid var(--border)" }}>

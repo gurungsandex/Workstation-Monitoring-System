@@ -1,5 +1,5 @@
 "use client";
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useState } from "react";
 import { useWebSocket, type WsEvent } from "./useWebSocket";
 import { useFleetData, mergeMetric, type FleetData } from "./useFleetData";
 import type { FleetStats } from "./api";

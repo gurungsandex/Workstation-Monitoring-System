@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Shell } from "@/components/shell/Shell";
 import { useLive } from "@/lib/LiveContext";
