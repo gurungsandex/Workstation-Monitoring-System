@@ -88,10 +88,9 @@ export async function enrollmentRoutes(app: FastifyInstance) {
        secretHash, agent_version, ws.id]
     );
 
-    // Issue a long-lived agent JWT
+    // Issue a long-lived agent JWT (signed by the same instance the WS handler verifies with)
     const payload: AgentJwtPayload = { sub: ws.id, type: "agent" };
-    const agentJwt = (app as unknown as { agentJwt: { sign: (p: AgentJwtPayload) => string } })
-      .agentJwt.sign(payload);
+    const agentJwt = app.jwt.sign(payload);
 
     return {
       workstation_id: ws.id,

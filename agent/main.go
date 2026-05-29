@@ -14,6 +14,8 @@ import (
 	"github.com/gurungsandex/wms-agent/transport"
 )
 
+const agentVersion = "1.0.0"
+
 type state struct {
 	WorkstationID string `json:"workstation_id"`
 	AgentToken    string `json:"agent_token"`
@@ -71,8 +73,23 @@ func main() {
 			}
 		}
 
+		sys := collector.GatherSystemInfo()
+		if sys.Hostname == "" {
+			sys.Hostname = hostname
+		}
+
 		log.Printf("Enrolling with token %s...", cfg.EnrollToken[:8]+"****")
-		resp, err := transport.Enroll(httpBase, cfg.EnrollToken, hostname)
+		resp, err := transport.Enroll(httpBase, transport.EnrollRequest{
+			Token:        cfg.EnrollToken,
+			Hostname:     sys.Hostname,
+			OSName:       sys.OSName,
+			OSShort:      sys.OSShort,
+			OSFamily:     sys.OSFamily,
+			CPUModel:     sys.CPUModel,
+			CPUCores:     sys.CPUCores,
+			RAMTotalGB:   sys.RAMTotalGB,
+			AgentVersion: agentVersion,
+		})
 		if err != nil {
 			log.Fatalf("Enrollment failed: %v", err)
 		}

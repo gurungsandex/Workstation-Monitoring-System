@@ -16,8 +16,15 @@ import (
 )
 
 type EnrollRequest struct {
-	Token    string `json:"token"`
-	Hostname string `json:"hostname"`
+	Token        string  `json:"enrollment_token"`
+	Hostname     string  `json:"hostname"`
+	OSName       string  `json:"os_name"`
+	OSShort      string  `json:"os_short"`
+	OSFamily     string  `json:"os_family"`
+	CPUModel     string  `json:"cpu_model"`
+	CPUCores     int     `json:"cpu_cores"`
+	RAMTotalGB   float64 `json:"ram_total_gb"`
+	AgentVersion string  `json:"agent_version"`
 }
 
 type EnrollResponse struct {
@@ -41,8 +48,8 @@ func New(serverURL, agentToken, workstationID string) *Client {
 }
 
 // Enroll exchanges a one-time enrollment token for a long-lived agent JWT.
-func Enroll(httpBase, enrollToken, hostname string) (*EnrollResponse, error) {
-	body, _ := json.Marshal(EnrollRequest{Token: enrollToken, Hostname: hostname})
+func Enroll(httpBase string, req EnrollRequest) (*EnrollResponse, error) {
+	body, _ := json.Marshal(req)
 	resp, err := http.Post(httpBase+"/api/enroll/register", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
