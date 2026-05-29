@@ -3,6 +3,7 @@ import { query } from "../db";
 import { broadcast } from "../ws/hub";
 import { evaluateAlerts } from "../services/alertEngine";
 import { computeHealthScore } from "../services/healthScore";
+import { requireAuth } from "../auth/middleware";
 
 export interface MetricPayload {
   workstation_id: string;
@@ -57,6 +58,7 @@ export async function metricsRoutes(app: FastifyInstance) {
   // GET /api/metrics/:id/history  — 24h history in 30-min buckets
   app.get<{ Params: { id: string }; Querystring: { hours?: string } }>(
     "/api/metrics/:id/history",
+    { preHandler: [requireAuth] },
     async (req) => {
       const hours = Math.min(parseInt(req.query.hours ?? "24"), 168);
       return query(
@@ -74,6 +76,7 @@ export async function metricsRoutes(app: FastifyInstance) {
   // GET /api/metrics/fleet/history  — fleet-average 24h in 30-min buckets
   app.get<{ Querystring: { hours?: string } }>(
     "/api/metrics/fleet/history",
+    { preHandler: [requireAuth] },
     async (req) => {
       const hours = Math.min(parseInt(req.query.hours ?? "24"), 168);
       return query(

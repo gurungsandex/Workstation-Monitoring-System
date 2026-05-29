@@ -7,8 +7,17 @@ export async function browserWsRoutes(app: FastifyInstance) {
     "/ws/live",
     { websocket: true },
     async (connection, req) => {
-      // Optional: verify user JWT (cookie or query param)
-      // For now allow unauthenticated reads (dashboard is read-only)
+      // Verify user JWT from cookie or ?token= query param
+      const tokenFromQuery = (req.query as Record<string, string>).token;
+      if (tokenFromQuery) {
+        (req.headers as Record<string, string>).authorization = `Bearer ${tokenFromQuery}`;
+      }
+      try {
+        await req.jwtVerify();
+      } catch {
+        connection.socket.close(4001, "Unauthorized");
+        return;
+      }
       registerClient(connection.socket);
       app.log.info({ ip: req.ip }, "Browser WS client connected");
     }
