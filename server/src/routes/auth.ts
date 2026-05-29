@@ -73,4 +73,86 @@ export async function authRoutes(app: FastifyInstance) {
       return created;
     }
   );
+
+  // GET /api/auth/users — admin lists all users
+  app.get(
+    "/api/auth/users",
+    { preHandler: [requireAuth] },
+    async (req, reply) => {
+      const me = req.user as JwtPayload;
+      if (me.role !== "admin") return reply.code(403).send({ error: "Admin only" });
+      return query<{ id: string; email: string; role: string; created_at: string; last_login_at: string | null }>(
+        "SELECT id, email, role, created_at, last_login_at FROM users ORDER BY created_at ASC",
+        []
+      );
+    }
+  );
+
+  // DELETE /api/auth/users/:id — admin deletes a user (cannot delete self)
+  app.delete<{ Params: { id: string } }>(
+    "/api/auth/users/:id",
+    { preHandler: [requireAuth] },
+    async (req, reply) => {
+      const me = req.user as JwtPayload;
+      if (me.role !== "admin") return reply.code(403).send({ error: "Admin only" });
+      if (req.params.id === me.sub) return reply.code(400).send({ error: "Cannot delete your own account" });
+      await query("DELETE FROM users WHERE id = $1", [req.params.id]);
+      await query(
+        "INSERT INTO audit_log (user_id, action, entity_type, entity_id) VALUES ($1, 'delete_user', 'user', $2)",
+        [me.sub, req.params.id]
+      );
+      return { ok: true };
+    }
+  );
+
+  // POST /api/auth/change-password — any authenticated user changes own password
+  app.post<{ Body: { currentPassword: string; newPassword: string } }>(
+    "/api/auth/change-password",
+    { preHandler: [requireAuth] },
+    async (req, reply) => {
+      const me = req.user as JwtPayload;
+      const { currentPassword, newPassword } = req.body;
+      if (!currentPassword || !newPassword) return reply.code(400).send({ error: "Both passwords required" });
+      if (newPassword.length < 8) return reply.code(400).send({ error: "Password must be at least 8 characters" });
+
+      const user = await queryOne<{ id: string; password_hash: string }>(
+        "SELECT id, password_hash FROM users WHERE id = $1",
+        [me.sub]
+      );
+      if (!user || !(await bcrypt.compare(currentPassword, user.password_hash))) {
+        return reply.code(401).send({ error: "Current password is incorrect" });
+      }
+      const hash = await bcrypt.hash(newPassword, 12);
+      await query("UPDATE users SET password_hash = $1 WHERE id = $2", [hash, me.sub]);
+      await query(
+        "INSERT INTO audit_log (user_id, action) VALUES ($1, 'change_password')",
+        [me.sub]
+      );
+      return { ok: true };
+    }
+  );
+
+  // GET /api/audit — admin reads audit log
+  app.get<{ Querystring: { page?: string; limit?: string } }>(
+    "/api/audit",
+    { preHandler: [requireAuth] },
+    async (req, reply) => {
+      const me = req.user as JwtPayload;
+      if (me.role !== "admin") return reply.code(403).send({ error: "Admin only" });
+      const page = parseInt(req.query.page ?? "1");
+      const limit = Math.min(parseInt(req.query.limit ?? "50"), 200);
+      const offset = (page - 1) * limit;
+      const [{ count }] = await query<{ count: string }>("SELECT COUNT(*) as count FROM audit_log", []);
+      const rows = await query(
+        `SELECT a.id, u.email, a.action, a.entity_type, a.entity_id,
+                a.metadata, a.ip_addr, a.created_at
+         FROM audit_log a
+         LEFT JOIN users u ON u.id = a.user_id
+         ORDER BY a.created_at DESC
+         LIMIT $1 OFFSET $2`,
+        [limit, offset]
+      );
+      return { total: parseInt(count), rows };
+    }
+  );
 }

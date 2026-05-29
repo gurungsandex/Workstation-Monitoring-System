@@ -3,12 +3,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
 import { useLive } from "@/lib/LiveContext";
+import { useAuth } from "@/lib/AuthContext";
 
 const NAV = [
   { id: "dashboard",    label: "Dashboard",   icon: "dashboard", href: "/"            },
   { id: "workstations", label: "Workstations", icon: "grid",      href: "/workstations"},
   { id: "alerts",       label: "Alerts",       icon: "alert",     href: "/alerts"      },
   { id: "network",      label: "Network",      icon: "network",   href: "/network"     },
+  { id: "settings",     label: "Settings",     icon: "settings",  href: "/settings"    },
 ];
 
 interface SidebarProps {
@@ -19,6 +21,7 @@ interface SidebarProps {
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname   = usePathname();
   const { fleetData, alertBadge } = useLive();
+  const { user, logout } = useAuth();
   const f = fleetData.fleet ?? { counts: { healthy: 0, warning: 0, critical: 0, offline: 0 }, total: 0 };
   const alertCount = alertBadge;
 
@@ -26,6 +29,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     : pathname.startsWith("/workstations") ? "workstations"
     : pathname.startsWith("/alerts")       ? "alerts"
     : pathname.startsWith("/network")      ? "network"
+    : pathname.startsWith("/settings")     ? "settings"
     : "dashboard";
 
   return (
@@ -114,6 +118,20 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* User + logout */}
+      {!collapsed && user && (
+        <div style={{ padding: "10px 12px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</div>
+            <div style={{ fontSize: 10, color: "var(--text-faint)", textTransform: "capitalize" }}>{user.role}</div>
+          </div>
+          <button onClick={logout} title="Sign out"
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-faint)", padding: 4, display: "flex", alignItems: "center" }}>
+            <Icon name="logout" size={15} />
+          </button>
         </div>
       )}
 

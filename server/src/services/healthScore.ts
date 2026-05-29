@@ -45,6 +45,13 @@ export function computeHealthScore(m: MetricPayload): HealthResult {
   // CPU temperature
   if (m.cpu_temp >= 84) {
     add(`CPU temp ${Math.round(m.cpu_temp)}°C`, Math.round((m.cpu_temp - 84) * 1.3), "critical");
+  } else if (m.cpu_temp >= 72) {
+    add(`CPU temp elevated (${Math.round(m.cpu_temp)}°C)`, Math.round((m.cpu_temp - 72) * 0.7), "warning");
+  }
+
+  // GPU temperature (independent of CPU temp)
+  if (m.gpu_temp >= 90) {
+    add(`GPU temp ${Math.round(m.gpu_temp)}°C`, Math.round((m.gpu_temp - 90) * 1.2), "critical");
   } else if (m.gpu_temp >= 80) {
     add(`GPU temp ${Math.round(m.gpu_temp)}°C`, Math.round((m.gpu_temp - 80) * 0.9), "warning");
   }
