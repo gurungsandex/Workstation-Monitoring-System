@@ -72,6 +72,12 @@ export interface EnrolledWorkstation {
   snap_net_eth_out?:   number;
   snap_net_down_mbps?: number;
   snap_net_up_mbps?:   number;
+  // extended fields from detailed endpoint
+  uptime_sec?:         number;
+  cpu_model?:          string;
+  cpu_cores?:          number;
+  ram_total_gb?:       number;
+  health_factors?:     Array<{ label: string; delta: number; sev: string }>;
 }
 
 export interface EnrollTokenResponse {
