@@ -40,15 +40,15 @@ export async function enrollmentRoutes(app: FastifyInstance) {
       // req.hostname already contains it (e.g. "localhost:4000" → "localhost:4000:4000").
       const host       = req.headers["host"] ?? `localhost:${config.port}`;
       const serverBase = `${req.protocol}://${host}`;
-      const wsBase     = serverBase.replace(/^http/, "ws") + "/ws/agent";
 
       return {
         workstation_id:   ws.id,
         enrollment_token: token,
         install: {
-          linux:   `curl -fsSL ${serverBase}/install/linux   | sudo WMS_ENROLL_TOKEN=${token} WMS_SERVER_URL=${wsBase} bash`,
-          macos:   `curl -fsSL ${serverBase}/install/macos   | sudo WMS_ENROLL_TOKEN=${token} WMS_SERVER_URL=${wsBase} bash`,
-          windows: `$env:WMS_ENROLL_TOKEN="${token}"; $env:WMS_SERVER_URL="${wsBase}"; iex (irm ${serverBase}/install/windows)`,
+          macos:   `curl -fsSL ${serverBase}/q/${token} | sudo bash`,
+          linux:   `curl -fsSL ${serverBase}/q/${token} | sudo bash`,
+          windows: `iex (irm ${serverBase}/q/${token}/windows)`,
+          url:     `${serverBase}/q/${token}`,
         },
       };
     }

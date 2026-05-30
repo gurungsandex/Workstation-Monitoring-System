@@ -87,6 +87,7 @@ export interface EnrollTokenResponse {
     linux: string;
     macos: string;
     windows: string;
+    url: string;
   };
 }
 
