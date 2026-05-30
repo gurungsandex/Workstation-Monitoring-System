@@ -3,8 +3,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { Shell } from "@/components/shell/Shell";
 import { EnrollModal } from "@/components/network/EnrollModal";
 import {
-  discovery, enrollment,
-  type DiscoveredHost, type ScanSession, type EnrolledWorkstation,
+  discovery, enrollment, deploy,
+  type DiscoveredHost, type ScanSession, type EnrolledWorkstation, type DeployParams,
 } from "@/lib/api";
 
 type Tab = "hosts" | "enrolled" | "sessions";
@@ -40,6 +40,7 @@ export default function NetworkPage() {
   const [showEnroll, setShowEnroll] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [cidrs, setCidrs] = useState("");
+  const [deployTarget, setDeployTarget] = useState<DiscoveredHost | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
@@ -102,7 +103,8 @@ export default function NetworkPage() {
 
   return (
     <Shell title="Network" subtitle="Discover hosts, enroll agents, manage workstations">
-      {showEnroll && <EnrollModal onClose={() => { setShowEnroll(false); load(); }} />}
+      {showEnroll   && <EnrollModal onClose={() => { setShowEnroll(false); load(); }} />}
+      {deployTarget && <DeployModal host={deployTarget} onClose={() => { setDeployTarget(null); load(); }} />}
 
       {/* Toolbar */}
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 20 }}>
@@ -158,7 +160,7 @@ export default function NetworkPage() {
                 : (
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                     <thead><tr style={{ borderBottom: "1px solid var(--border)" }}>
-                      <TH>IP Address</TH><TH>Hostname</TH><TH>MAC</TH><TH>Last Scanned</TH><TH>Status</TH>
+                      <TH>IP Address</TH><TH>Hostname</TH><TH>MAC</TH><TH>Last Scanned</TH><TH>Status</TH><TH>{" "}</TH>
                     </tr></thead>
                     <tbody>
                       {hosts.map((h) => (
@@ -170,11 +172,16 @@ export default function NetworkPage() {
                           <td style={{ padding: "10px 14px" }}>
                             {h.is_enrolled
                               ? <StatusBadge color="var(--healthy)">Enrolled{h.ws_hostname ? ` (${h.ws_hostname})` : ""}</StatusBadge>
-                              : <button className="btn" onClick={() => setShowEnroll(true)}
-                                  style={{ fontSize: 11, padding: "3px 10px", background: "var(--card-2)", border: "1px solid var(--border)" }}>
-                                  Enroll
-                                </button>
+                              : <StatusBadge color="var(--text-faint)">Not enrolled</StatusBadge>
                             }
+                          </td>
+                          <td style={{ padding: "10px 14px" }}>
+                            {!h.is_enrolled && (
+                              <button className="btn" onClick={() => setDeployTarget(h)}
+                                style={{ fontSize: 11, padding: "3px 10px", background: "color-mix(in oklab,var(--info) 12%,transparent)", border: "1px solid color-mix(in oklab,var(--info) 30%,transparent)", color: "var(--info)", whiteSpace: "nowrap" }}>
+                                ⬆ Deploy Agent
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -300,4 +307,160 @@ function Empty({ children }: { children: React.ReactNode }) {
 
 function Faint({ children }: { children: React.ReactNode }) {
   return <span style={{ color: "var(--text-faint)" }}>{children}</span>;
+}
+
+// ── DeployModal ───────────────────────────────────────────────────────────────
+
+function DeployModal({ host, onClose }: { host: DiscoveredHost; onClose: () => void }) {
+  const [sshUser, setSshUser]         = useState("root");
+  const [sshPassword, setSshPassword] = useState("");
+  const [sshPort, setSshPort]         = useState("22");
+  const [hostname, setHostname]       = useState(host.hostname ?? host.ip);
+  const [dept, setDept]               = useState("");
+  const [owner, setOwner]             = useState("");
+  const [deploying, setDeploying]     = useState(false);
+  const [logs, setLogs]               = useState<string[]>([]);
+  const [done, setDone]               = useState(false);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll log
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [logs]);
+
+  async function runDeploy(e: React.FormEvent) {
+    e.preventDefault();
+    setDeploying(true);
+    setLogs([]);
+
+    const params: DeployParams = {
+      host_id:      host.id,
+      ip:           host.ip,
+      ssh_user:     sshUser,
+      ssh_password: sshPassword,
+      ssh_port:     parseInt(sshPort) || 22,
+      hostname,
+      dept:         dept || undefined,
+      owner:        owner || undefined,
+    };
+
+    try {
+      const res = await deploy.run(params);
+      if (!res.body) { setLogs(["[error] No response body"]); setDeploying(false); return; }
+
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let   buf     = "";
+
+      while (true) {
+        const { done: streamDone, value } = await reader.read();
+        if (streamDone) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        lines.filter(Boolean).forEach((l) => setLogs((prev) => [...prev, l]));
+      }
+      if (buf) setLogs((prev) => [...prev, buf]);
+    } catch (err: unknown) {
+      setLogs((prev) => [...prev, `[error] ${err instanceof Error ? err.message : String(err)}`]);
+    }
+
+    setDeploying(false);
+    setDone(true);
+  }
+
+  const OVERLAY: React.CSSProperties = {
+    position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
+    display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100,
+  };
+  const MODAL: React.CSSProperties = {
+    background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12,
+    padding: 28, width: 540, maxWidth: "95vw", display: "flex", flexDirection: "column", gap: 18,
+  };
+  const INPUT: React.CSSProperties = {
+    background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8,
+    padding: "8px 12px", color: "var(--text)", fontSize: 13, outline: "none", width: "100%",
+  };
+
+  return (
+    <div style={OVERLAY} onClick={(e) => e.target === e.currentTarget && !deploying && onClose()}>
+      <div style={MODAL}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Deploy Agent via SSH</div>
+            <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 3 }}>
+              Target: <span style={{ fontFamily: "var(--font-mono)", color: "var(--info)" }}>{host.ip}</span>
+              {host.hostname && <span style={{ marginLeft: 6, color: "var(--text-faint)" }}>({host.hostname})</span>}
+            </div>
+          </div>
+          {!deploying && (
+            <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-dim)", fontSize: 20, cursor: "pointer", lineHeight: 1 }}>×</button>
+          )}
+        </div>
+
+        {!done ? (
+          <form onSubmit={runDeploy} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 80px", gap: 10 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                <label style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>SSH User</label>
+                <input value={sshUser} onChange={(e) => setSshUser(e.target.value)} required style={INPUT} placeholder="root" />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                <label style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Port</label>
+                <input value={sshPort} onChange={(e) => setSshPort(e.target.value)} style={INPUT} placeholder="22" />
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              <label style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>SSH Password</label>
+              <input type="password" value={sshPassword} onChange={(e) => setSshPassword(e.target.value)} style={INPUT} placeholder="Password or leave blank if using key auth" />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5, gridColumn: "1 / -1" }}>
+                <label style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Workstation Name</label>
+                <input value={hostname} onChange={(e) => setHostname(e.target.value)} required style={INPUT} />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                <label style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Dept</label>
+                <input value={dept} onChange={(e) => setDept(e.target.value)} style={INPUT} placeholder="e.g. Engineering" />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5, gridColumn: "2 / -1" }}>
+                <label style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Owner</label>
+                <input value={owner} onChange={(e) => setOwner(e.target.value)} style={INPUT} placeholder="e.g. John Doe" />
+              </div>
+            </div>
+            <button type="submit" disabled={deploying}
+              style={{ padding: "10px 18px", borderRadius: 8, border: "none", background: "var(--info)", color: "#04070d", fontWeight: 700, fontSize: 13, cursor: deploying ? "not-allowed" : "pointer", opacity: deploying ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              {deploying ? <><SpinDot /> Deploying…</> : "⬆  Deploy Agent"}
+            </button>
+          </form>
+        ) : (
+          <button onClick={onClose}
+            style={{ padding: "9px 18px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card-2)", color: "var(--text)", fontSize: 13, cursor: "pointer" }}>
+            Close
+          </button>
+        )}
+
+        {/* Log output */}
+        {logs.length > 0 && (
+          <div ref={logRef} style={{
+            background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8,
+            padding: 12, maxHeight: 220, overflowY: "auto",
+            fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.6,
+            display: "flex", flexDirection: "column", gap: 1,
+          }}>
+            {logs.map((l, i) => (
+              <div key={i} style={{
+                color: l.startsWith("[error]") ? "var(--critical)"
+                     : l.startsWith("[stderr]") ? "var(--warning)"
+                     : l.includes("✓") ? "var(--healthy)"
+                     : l.includes("✗") ? "var(--critical)"
+                     : "var(--text-dim)",
+              }}>{l}</div>
+            ))}
+            {deploying && <div style={{ color: "var(--info)", display: "flex", alignItems: "center", gap: 6 }}><SpinDot /> running…</div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }

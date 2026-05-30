@@ -114,6 +114,31 @@ export const discovery = {
     }),
 };
 
+// ---------- deploy ----------
+
+export interface DeployParams {
+  host_id?:      string;
+  ip?:           string;
+  ssh_user:      string;
+  ssh_password?: string;
+  ssh_key?:      string;
+  ssh_port?:     number;
+  hostname?:     string;
+  dept?:         string;
+  owner?:        string;
+}
+
+export const deploy = {
+  // Returns a ReadableStream of plain-text log lines
+  run: (params: DeployParams): Promise<Response> =>
+    fetch((process.env.NEXT_PUBLIC_API_URL ?? "/api") + "/deploy", {
+      method:      "POST",
+      credentials: "include",
+      headers:     { "Content-Type": "application/json" },
+      body:        JSON.stringify(params),
+    }),
+};
+
 // ---------- enrollment ----------
 
 export const enrollment = {

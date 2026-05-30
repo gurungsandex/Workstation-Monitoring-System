@@ -11,6 +11,7 @@ import { metricsRoutes } from "./routes/metrics";
 import { workstationRoutes } from "./routes/workstations";
 import { alertRoutes } from "./routes/alerts";
 import { discoveryRoutes } from "./routes/discovery";
+import { deployRoutes } from "./routes/deploy";
 import { agentWsRoutes } from "./ws/agentHandler";
 import { browserWsRoutes } from "./ws/browserHandler";
 import { raiseHeartbeatAlert } from "./services/alertEngine";
@@ -46,6 +47,7 @@ async function main() {
   await app.register(workstationRoutes);
   await app.register(alertRoutes);
   await app.register(discoveryRoutes);
+  await app.register(deployRoutes);
 
   // WebSocket routes
   await app.register(agentWsRoutes);
