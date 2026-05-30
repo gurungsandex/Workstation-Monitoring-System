@@ -4,6 +4,7 @@ import bcrypt from "bcrypt";
 import { query, queryOne } from "../db";
 import { requireAdmin, requireAuth } from "../auth/middleware";
 import type { JwtPayload, AgentJwtPayload } from "../auth/middleware";
+import { config } from "../config";
 
 // Generate a cryptographically random token
 function genToken(bytes = 24): string {
@@ -34,15 +35,20 @@ export async function enrollmentRoutes(app: FastifyInstance) {
         [me.sub, ws.id, JSON.stringify({ hostname, ip, dept })]
       );
 
-      // Build install instructions
-      const serverBase = `${req.protocol}://${req.hostname}:4000`;
+      // Build install instructions.
+      // Use req.headers.host (includes port) to avoid doubling the port when
+      // req.hostname already contains it (e.g. "localhost:4000" → "localhost:4000:4000").
+      const host       = req.headers["host"] ?? `localhost:${config.port}`;
+      const serverBase = `${req.protocol}://${host}`;
+      const wsBase     = serverBase.replace(/^http/, "ws") + "/ws/agent";
+
       return {
         workstation_id:   ws.id,
         enrollment_token: token,
         install: {
-          linux:   `curl -fsSL ${serverBase}/install/linux | sudo WMS_TOKEN=${token} WMS_SERVER=${serverBase} bash`,
-          macos:   `curl -fsSL ${serverBase}/install/macos | sudo WMS_TOKEN=${token} WMS_SERVER=${serverBase} bash`,
-          windows: `iex "& { $(irm ${serverBase}/install/windows) }" -Token ${token} -Server ${serverBase}`,
+          linux:   `curl -fsSL ${serverBase}/install/linux   | sudo WMS_ENROLL_TOKEN=${token} WMS_SERVER_URL=${wsBase} bash`,
+          macos:   `curl -fsSL ${serverBase}/install/macos   | sudo WMS_ENROLL_TOKEN=${token} WMS_SERVER_URL=${wsBase} bash`,
+          windows: `$env:WMS_ENROLL_TOKEN="${token}"; $env:WMS_SERVER_URL="${wsBase}"; iex (irm ${serverBase}/install/windows)`,
         },
       };
     }
