@@ -65,16 +65,22 @@ export default function NetworkPage() {
       }, ...prev]);
       setTab("sessions");
       let attempts = 0;
+      let errors = 0;
       pollRef.current = setInterval(async () => {
         attempts++;
         try {
           const s = await discovery.session(session_id);
+          errors = 0; // reset on success
           setSessions((prev) => prev.map((x) => (x.id === session_id ? s : x)));
           if (s.status !== "running" || attempts > 120) {
             clearInterval(pollRef.current!); setScanning(false);
             if (s.status === "done") load();
           }
-        } catch { clearInterval(pollRef.current!); setScanning(false); }
+        } catch {
+          errors++;
+          // Only abort after 5 consecutive failures (ignore transient 429 / hiccup)
+          if (errors >= 5) { clearInterval(pollRef.current!); setScanning(false); }
+        }
       }, 2000);
     } catch (e: unknown) {
       setScanError(e instanceof Error ? e.message : "Scan failed"); setScanning(false);

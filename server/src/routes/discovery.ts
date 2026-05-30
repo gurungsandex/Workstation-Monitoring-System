@@ -51,7 +51,7 @@ export async function discoveryRoutes(app: FastifyInstance) {
       // Return all discovered hosts (joined with enrolled workstation if applicable)
       return query(
         `SELECT
-           dh.id, dh.ip::text, dh.mac, dh.hostname, dh.vendor, dh.open_ports,
+           dh.id, host(dh.ip) AS ip, dh.mac, dh.hostname, dh.vendor, dh.open_ports,
            dh.last_scanned,
            CASE WHEN dh.workstation_id IS NOT NULL THEN true ELSE false END AS is_enrolled,
            dh.workstation_id,

@@ -26,7 +26,7 @@ async function main() {
   });
 
   await app.register(fastifyRateLimit, {
-    max: 200,
+    max: parseInt(process.env.RATE_LIMIT_MAX ?? "600"),
     timeWindow: "1 minute",
   });
 
