@@ -2,11 +2,21 @@
 
 A self-hosted, real-time fleet monitoring dashboard for tracking workstation health, performance metrics, alerts, and network discovery — all in one place.
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Next.js](https://img.shields.io/badge/Next.js-14-black)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
-![Go](https://img.shields.io/badge/Go-1.22-cyan)
-![Docker](https://img.shields.io/badge/Docker-Compose-2496ED)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Next.js](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org)
+[![Go](https://img.shields.io/badge/Go-1.22-00ADD8)](https://go.dev)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED)](https://docs.docker.com/compose)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+> **Get started in 60 seconds:**
+> ```bash
+> git clone https://github.com/gurungsandex/Workstation-Monitoring-System.git
+> cd Workstation-Monitoring-System
+> cp .env.example .env   # edit secrets, then:
+> docker compose up -d
+> ```
+> Open https://localhost — login: `admin@wms.local` / `changeme123`
 
 ---
 
