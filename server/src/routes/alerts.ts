@@ -45,7 +45,10 @@ export async function alertRoutes(app: FastifyInstance) {
       `SELECT a.id, a.workstation_id, w.hostname, w.dept,
               a.metric, a.value, a.threshold, a.severity, a.action,
               a.is_resolved, a.is_ack, a.ack_by, a.ack_at,
-              a.started_at, a.resolved_at, a.duration_min
+              a.started_at, a.resolved_at,
+              COALESCE(a.duration_min,
+                EXTRACT(EPOCH FROM (NOW() - a.started_at))::INT / 60
+              ) AS duration_min
        FROM alerts a
        JOIN workstations w ON w.id = a.workstation_id
        ${where}

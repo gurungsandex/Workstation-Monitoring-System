@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS alerts (
   started_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   resolved_at    TIMESTAMPTZ,
   duration_min   INT GENERATED ALWAYS AS (
-    EXTRACT(EPOCH FROM (COALESCE(resolved_at, NOW()) - started_at)) / 60
+    EXTRACT(EPOCH FROM (resolved_at - started_at)) / 60
   ) STORED
 );
 
