@@ -34,8 +34,8 @@ fi
 # Ensure wms role and DB exist
 PSQL=$(find /opt/homebrew/Cellar/postgresql* -name "psql" 2>/dev/null | head -1)
 if [ -n "$PSQL" ]; then
-  "$PSQL" -U sandeshgurung postgres -c "CREATE ROLE wms WITH LOGIN PASSWORD 'wms';" 2>/dev/null || true
-  "$PSQL" -U sandeshgurung postgres -c "CREATE DATABASE wms OWNER wms;"              2>/dev/null || true
+  "$PSQL" -U "$USER" postgres -c "CREATE ROLE wms WITH LOGIN PASSWORD 'wms';" 2>/dev/null || true
+  "$PSQL" -U "$USER" postgres -c "CREATE DATABASE wms OWNER wms;"              2>/dev/null || true
 fi
 
 # ── 4. Run migrations ────────────────────────────────────────────────────────

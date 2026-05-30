@@ -1,1 +1,328 @@
-# Workstation-Monitoring-System
+# Workstation Monitoring System
+
+A self-hosted, real-time fleet monitoring dashboard for tracking workstation health, performance metrics, alerts, and network discovery — all in one place.
+
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Next.js](https://img.shields.io/badge/Next.js-14-black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
+![Go](https://img.shields.io/badge/Go-1.22-cyan)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED)
+
+---
+
+## Overview
+
+Workstation Monitoring System (WMS) is an open-source IT monitoring tool that gives you live visibility into every machine in your fleet. A lightweight Go agent runs on each workstation and streams CPU, RAM, disk, GPU, and network metrics over WebSocket to a central server. The Next.js dashboard visualizes everything in real time with animated charts, health scores, and a configurable alert engine.
+
+**Key features:**
+
+- **Real-time metrics** — CPU, RAM, disk, GPU, and network streamed live via WebSocket
+- **Health scoring** — composite health score per workstation with drill-down factors
+- **Alert engine** — configurable thresholds with auto-resolve and bulk acknowledge
+- **Network discovery** — CIDR scan to discover hosts; one-click agent enrollment
+- **SSH push-deploy** — install the agent on a remote host directly from the admin UI
+- **Role-based access** — admin (full) and viewer (read-only) roles
+- **Audit log** — every admin action recorded
+- **Cross-platform agent** — Linux (systemd), macOS (launchd), Windows (PowerShell service)
+- **Self-hosted & private** — your data never leaves your infrastructure
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Browser (HTTPS)                     │
+│              Next.js 14 dashboard + Recharts            │
+└────────────────────────┬────────────────────────────────┘
+                         │ REST + WebSocket (via Caddy)
+┌────────────────────────▼────────────────────────────────┐
+│           Fastify API server  (TypeScript/Node)         │
+│   • REST routes: auth, enroll, workstations, alerts     │
+│   • WebSocket hub: agent connections + browser fanout   │
+│   • Alert engine: evaluates thresholds every N seconds  │
+└────────────────────────┬────────────────────────────────┘
+                         │ SQL (pg driver)
+┌────────────────────────▼────────────────────────────────┐
+│            TimescaleDB / PostgreSQL 15                  │
+│   workstations, metrics, alerts, audit_log, users       │
+└─────────────────────────────────────────────────────────┘
+                         ▲
+       WebSocket /ws/agent│ (per enrolled workstation)
+┌──────────────────────── ┤ ───────────────────────────── ┐
+│    Go agent (wms-agent)  │                               │
+│  gopsutil · 10s interval │  Linux / macOS / Windows      │
+└──────────────────────────┘ ───────────────────────────── ┘
+```
+
+**Stack:**
+
+| Layer | Technology |
+|---|---|
+| Dashboard | Next.js 14, React 18, Tailwind CSS, Recharts, Framer Motion |
+| API server | Fastify (TypeScript), WebSocket, JWT auth |
+| Agent | Go 1.22, gopsutil, gorilla/websocket |
+| Database | TimescaleDB (PostgreSQL 15 + time-series extension) |
+| Reverse proxy | Caddy 2 (automatic TLS) |
+| Deployment | Docker Compose |
+
+---
+
+## Screenshots
+
+> Coming soon — PRs adding screenshots are welcome!
+
+---
+
+## Quick Start (Docker)
+
+### Prerequisites
+
+- Docker 24+ and Docker Compose v2
+- Ports 80 and 443 open
+
+### 1. Clone and configure
+
+```bash
+git clone https://github.com/gurungsandex/Workstation-Monitoring-System.git
+cd Workstation-Monitoring-System
+cp .env.example .env
+```
+
+Edit `.env`:
+
+```bash
+# Generate strong secrets
+openssl rand -hex 32   # use for JWT_SECRET
+openssl rand -hex 32   # use for AGENT_JWT_SECRET
+```
+
+| Variable | Description |
+|---|---|
+| `DB_PASSWORD` | Strong postgres password |
+| `JWT_SECRET` | 32+ char random string (user auth tokens) |
+| `AGENT_JWT_SECRET` | 32+ char random string (agent auth tokens) |
+| `CADDY_HOST` | Your domain (e.g. `monitor.example.com`) or `localhost` |
+| `CORS_ORIGIN` | `https://<your-domain>` |
+| `NEXT_PUBLIC_API_URL` | `https://<your-domain>/api` |
+| `NEXT_PUBLIC_WS_URL` | `wss://<your-domain>/ws/live` |
+| `SCAN_CIDRS` | Comma-separated CIDRs for network discovery |
+
+### 2. Start the stack
+
+```bash
+docker compose up -d
+```
+
+Services started:
+- **TimescaleDB** — metrics storage (migrations run automatically)
+- **Server** — Fastify API + WebSocket hub
+- **Web** — Next.js dashboard
+- **Caddy** — reverse proxy with automatic TLS (Let's Encrypt for real domains, self-signed for `localhost`)
+
+Check health:
+```bash
+docker compose ps
+docker compose logs -f server
+```
+
+### 3. First login
+
+Open `https://<your-domain>` and log in with the seeded admin account:
+
+- **Email:** `admin@wms.local`
+- **Password:** `changeme123`
+
+**Change the password immediately** via Settings → Change Password.
+
+---
+
+## Installing the Agent
+
+### Generate an enrollment token
+
+In the UI: **Network → Discover & Enroll → Generate Token**, or via API:
+
+```bash
+curl -s -X POST https://<domain>/api/enroll/token \
+  -H "Cookie: wms_token=<admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{"hostname":"my-workstation","dept":"Engineering"}' | jq .
+```
+
+The response includes ready-to-run one-liner install commands for all platforms.
+
+### Linux (systemd)
+
+```bash
+WMS_SERVER=wss://<domain>/ws/agent \
+WMS_TOKEN=<token> \
+bash <(curl -fsSL https://<domain>/install/linux.sh)
+```
+
+### macOS (launchd)
+
+```bash
+WMS_SERVER=wss://<domain>/ws/agent \
+WMS_TOKEN=<token> \
+bash <(curl -fsSL https://<domain>/install/macos.sh)
+```
+
+### Windows (PowerShell, run as Administrator)
+
+```powershell
+.\agent\install\windows\install.ps1 `
+  -WmsServerUrl "wss://<domain>/ws/agent" `
+  -WmsEnrollToken "<token>"
+```
+
+The agent will:
+1. Exchange the enrollment token for a permanent per-agent JWT
+2. Persist credentials to disk (`/etc/wms-agent/state.json` on Linux/macOS, `%PROGRAMDATA%\wms-agent\state.json` on Windows)
+3. Register as a system service and start streaming metrics every 10 seconds
+
+### SSH Push-Deploy (admin UI)
+
+Alternatively, from the admin UI: **Network → Discovered Hosts → Push Deploy**. Enter the target IP and SSH credentials — WMS will SSH in and run the install script automatically.
+
+---
+
+## Alert Thresholds
+
+Alerts are evaluated automatically by the server every minute (configurable via `ALERT_INTERVAL_MS`).
+
+| Metric | Condition | Severity |
+|---|---|---|
+| CPU Load | > 95% sustained 5 min | Critical |
+| RAM Usage | > 90% sustained 10 min | Critical |
+| Disk Capacity | > 85% | Warning |
+| CPU Temperature | > 85 °C | Critical |
+| GPU Temperature | > 80 °C | Warning |
+| Internet Downlink | < 30 Mbps | Warning |
+| Agent Heartbeat | No signal > 5 min | Critical |
+
+Alerts auto-resolve when the condition clears. Acknowledge alerts in bulk on the **Alerts Center** page.
+
+---
+
+## Network Discovery
+
+Go to **Network → Run Scan** and enter a CIDR range (e.g. `192.168.1.0/24`). WMS performs a fast concurrent port scan and lists discovered hosts with IP, hostname, MAC address, and open ports. Click **Enroll** on any host to generate an install command.
+
+---
+
+## Local Development
+
+### Prerequisites
+
+- Node.js 20+
+- Go 1.22+
+- Docker (for TimescaleDB)
+
+### Start the database
+
+```bash
+docker compose -f docker-compose.dev.yml up -d
+```
+
+### Start the API server
+
+```bash
+cd server
+cp .env.example .env   # already done — edit DATABASE_URL if needed
+npm install
+npm run dev
+```
+
+### Start the Next.js frontend
+
+```bash
+npm install
+npm run dev
+```
+
+Dashboard is available at `http://localhost:3000`. API runs at `http://localhost:4000`.
+
+### Build the agent
+
+```bash
+cd agent
+./build-all.sh   # cross-compiles for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64
+```
+
+Binaries are output to `server/binaries/`.
+
+---
+
+## Project Structure
+
+```
+.
+├── agent/                  # Go agent (cross-platform)
+│   ├── collector/          # gopsutil metric collection
+│   ├── config/             # config + credential persistence
+│   ├── transport/          # WebSocket client + enrollment
+│   ├── install/            # OS-specific install scripts
+│   └── build-all.sh        # cross-compile script
+├── app/                    # Next.js App Router pages
+│   ├── workstations/       # Fleet list + detail views
+│   ├── alerts/             # Alert center
+│   ├── network/            # Discovery + enrollment
+│   ├── settings/           # Users, password, audit log
+│   └── login/              # Auth page
+├── components/             # Reusable React components
+│   ├── charts/             # Animated charts (Gauge, Sparkline, LineChart…)
+│   ├── dashboard/          # Dashboard cards
+│   ├── network/            # Enroll modal
+│   └── shell/              # Layout (sidebar, topbar)
+├── db/migrations/          # SQL migrations (run in order on startup)
+├── lib/                    # Shared frontend utilities + hooks
+├── server/                 # Fastify API server
+│   ├── src/
+│   │   ├── routes/         # REST endpoints
+│   │   ├── services/       # Alert engine, discovery, health scoring
+│   │   ├── ws/             # WebSocket hub + handlers
+│   │   └── auth/           # JWT middleware
+│   └── scripts/migrate.js  # Migration runner
+├── docker-compose.yml      # Production stack
+├── docker-compose.dev.yml  # Local dev stack (DB only)
+├── Dockerfile.web          # Next.js container
+├── server/Dockerfile       # Fastify container
+├── Caddyfile               # Reverse proxy + TLS config
+└── .env.example            # Environment variable template
+```
+
+---
+
+## Security
+
+- All cookies are `HttpOnly`, `SameSite=Strict`, and `Secure` in production
+- Agent JWTs are separate from user JWTs with a different signing secret
+- Caddy provisions Let's Encrypt certificates automatically for real domains
+- All admin actions are written to the audit log (Settings → Audit Log)
+- The database is isolated inside the Docker network (not exposed externally)
+- Enrollment tokens are one-time-use and exchange for a long-lived agent credential on first contact
+
+---
+
+## Updating
+
+```bash
+git pull
+docker compose build --no-cache
+docker compose up -d
+```
+
+Migrations run automatically on server startup — new migrations are applied, existing ones skipped.
+
+---
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE) for details.

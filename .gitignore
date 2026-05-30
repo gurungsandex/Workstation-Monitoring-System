@@ -12,6 +12,16 @@ next-env.d.ts
 # Misc
 .DS_Store
 *.pem
+
+# Environment files — never commit secrets
 .env
 .env.local
 .env.*.local
+server/.env
+server/.env.local
+
+# OS artifacts
+Thumbs.db
+
+# Internal design/dev handoff artifacts
+design_handoff_workstationmonsys/
